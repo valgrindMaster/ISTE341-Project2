@@ -19,12 +19,12 @@ s#q0test
 s#w0canvas
 !76;u
 a1	b68	c255	f%\011HaynesOP2.jar	g%\011HaynesOP2.zip	hManifest-Version\0111.0!142;g
+%\011src%sservice%sLAMSAppointmentService.java
 %\011src%sbusiness%sBusinessLayer.java
 %\011src%sMain.java
-%\011src%sservice%sLAMSAppointmentService.java
 %\011src%sservice%sDBSingleton.java
 !142;f
+%\011src%sservice%sLAMSAppointmentService.java
 %\011src%sbusiness%sBusinessLayer.java
 %\011src%sMain.java
-%\011src%sservice%sLAMSAppointmentService.java
 %\011src%sservice%sDBSingleton.java

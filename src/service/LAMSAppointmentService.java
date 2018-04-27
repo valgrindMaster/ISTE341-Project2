@@ -3,88 +3,154 @@ package service;
 import java.util.*;
 import components.data.*;
 import business.*;
-import org.w3c.dom.Document;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.InputStream;
 import java.io.ByteArrayInputStream;
+import java.io.StringWriter;
+import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.w3c.dom.Element;
+import org.w3c.dom.Attr;
+import javax.xml.transform.*;
 import javax.xml.bind.*;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
+import javax.jws.WebService;
+import javax.jws.WebMethod;
+
+@WebService(serviceName = "LAMSAppointmentService")
 public class LAMSAppointmentService {
 
    private DBSingleton dbSingleton;
+   
+   public LAMSAppointmentService() {
+      initialize();
+   }
 
+   @WebMethod(operationName = "initialize")
    public String initialize() {
       dbSingleton = DBSingleton.getInstance();
       dbSingleton.db.initialLoad("LAMS");
       return "Database Initialized";
    }
    
+   @WebMethod(operationName = "getAllAppointments")
    public String getAllAppointments() throws Exception {
-      String result = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?> <AppointmentList>";
       List<Object> objs;
       
       dbSingleton = DBSingleton.getInstance();
       objs = dbSingleton.db.getData("Appointment", "");
       
       if (objs == null || objs.isEmpty()) {
-         dbSingleton.db.initialLoad("LAMS");
+         initialize();
          objs = dbSingleton.db.getData("Appointment", "");
       }
       
+      String result = "";
       if (objs!= null) {
-         JAXBContext jaxbContext = JAXBContext.newInstance(Appointment.class);
-   		Marshaller jaxbMarshaller = jaxbContext.createMarshaller();
-         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-         
-         dbf.setNamespaceAware(true);
-         DocumentBuilder db = dbf.newDocumentBuilder();
+         DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
+		   DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
+         TransformerFactory tf = TransformerFactory.newInstance();
+         Transformer transformer = tf.newTransformer();
+         StringWriter writer = new StringWriter();
+
+		   Document doc = docBuilder.newDocument();
+         Element rootElement = doc.createElement("AppointmentList");
+         doc.appendChild(rootElement);
          
          for (Object obj : objs) {
-            Document doc = db.newDocument();
-            jaxbMarshaller.marshal(obj, doc);
-         
-            result += doc.toString();
+            Appointment appointment = (Appointment) obj;
+            Element aptElement = doc.createElement("appointment");
+            
+            //Add attributes to appointment tag.
+            aptElement = addAptAttr(appointment, aptElement, doc);
+            
+            //Add patient data.
+            aptElement = addPatientsToApt(appointment, aptElement, doc);
+            
+            //Add phlebotomist data.
+            aptElement = addPhlebotomistToApt(appointment, aptElement, doc);
+            
+            //Add PSC data.
+            aptElement = addPSCToApt(appointment, aptElement, doc);
+            
+            //Add Lab Test data.
+            aptElement = addLabTestsToApt(appointment, aptElement, doc);
+            
+            rootElement.appendChild(aptElement);
          }
+         
+         transformer.transform(new DOMSource(doc), new StreamResult(writer));
+         result += writer.toString();
       }
       
-      return result + "</AppointmentList> ";
+      return result;
    }
    
-   public String getAppointment(String appointmentNumber) {
-      String result = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?> <AppointmentList>";
+   @WebMethod(operationName = "getAppointment")
+   public String getAppointment(String appointmentNumber) throws Exception {
       List<Object> objs;
+      String arg = "id='" + appointmentNumber + "'";
       
       dbSingleton = DBSingleton.getInstance();
-      objs = dbSingleton.db.getData("Appointment", "id='" + appointmentNumber + "'");
+      objs = dbSingleton.db.getData("Appointment", arg);
       
       if (objs == null || objs.isEmpty()) {
-         dbSingleton.db.initialLoad("LAMS");
-         objs = dbSingleton.db.getData("Appointment", "id='" + appointmentNumber + "'");
+         initialize();
+         objs = dbSingleton.db.getData("Appointment", arg);
       }
       
-      Patient patient = null;
-      Phlebotomist phleb = null;
-      PSC psc = null;
+      DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
+	   DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
+      TransformerFactory tf = TransformerFactory.newInstance();
+      Transformer transformer = tf.newTransformer();
+      StringWriter writer = new StringWriter();
+
+	   Document doc = docBuilder.newDocument();
+      Element rootElement = doc.createElement("AppointmentList");
+      doc.appendChild(rootElement);
       
-      if (objs != null) {
-         for (Object obj : objs){
-            result += obj;
-         }
+      String result = "";
+      if (objs != null && objs.isEmpty()) {
+         Element errElement = doc.createElement("error");
+         errElement.appendChild(doc.createTextNode("ERROR: No Appointment found with matching id"));
+		   rootElement.appendChild(errElement);
+      } else if (objs != null) {
+         Appointment appointment = (Appointment) objs.get(0);
+         Element aptElement = doc.createElement("appointment");
+         
+         //Add attributes to appointment tag.
+         aptElement = addAptAttr(appointment, aptElement, doc);
+         
+         //Add patient data.
+         aptElement = addPatientsToApt(appointment, aptElement, doc);
+         
+         //Add phlebotomist data.
+         aptElement = addPhlebotomistToApt(appointment, aptElement, doc);
+         
+         //Add PSC data.
+         aptElement = addPSCToApt(appointment, aptElement, doc);
+         
+         //Add Lab Test data.
+         aptElement = addLabTestsToApt(appointment, aptElement, doc);
+         
+         rootElement.appendChild(aptElement);
       }
       
-      if (objs == null || objs.isEmpty()) {
-         result = "<error>ERROR:Appointment is not available</error>";
-      }
+      transformer.transform(new DOMSource(doc), new StreamResult(writer));
+      result += writer.toString();
       
-      return result + "</AppointmentList>";
+      return result;
    }
    
+   @WebMethod(operationName = "addAppointment")
    public String addAppointment(String xmlStyle) throws Exception {
-      String result = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?> <AppointmentList>";
       String aptId = createAppointmentId();
       
       Document doc = parseXmlFromString(xmlStyle);
@@ -106,13 +172,14 @@ public class LAMSAppointmentService {
       
       List<AppointmentLabTest> labTests = new ArrayList<AppointmentLabTest>();
       NodeList labTestsNL = appointment.getElementsByTagName("labTests");
+      
       for (int i = 0; i < labTestsNL.getLength(); i++) {
          Node testNode = doc.getElementsByTagName("test").item(0);
-         Element labTestElement = (Element)testNode;
+         Element labTestElement = (Element) testNode;
          AppointmentLabTest labTest = new AppointmentLabTest(aptId,labTestElement.getAttribute("id"),labTestElement.getAttribute("dxcode"));
          
          labTest.setDiagnosis((Diagnosis)dbSingleton.db.getData("Diagnosis", "code='" + labTestElement.getAttribute("dxcode") + "'").get(0));
-         labTest.setLabTest((LabTest)dbSingleton.db.getData("LabTest","id='" + labTestElement.getAttribute("id") + "'").get(0));
+         labTest.setLabTest((LabTest)dbSingleton.db.getData("LabTest", "id='" + labTestElement.getAttribute("id") + "'").get(0));
          
          labTests.add(labTest);
       }
@@ -123,16 +190,8 @@ public class LAMSAppointmentService {
       newAppt.setPhlebid(phlebotomist);
       newAppt.setPscid(psc);
       
-      boolean good = dbSingleton.db.addData(newAppt);
-      List<Object> objs = dbSingleton.db.getData("Appointment", "patientid='" + aptId + "'");
-      
-      if (objs != null) {
-         for (Object obj : objs){
-            result += obj;
-         }
-      }
-
-      return result + "</appointment>";
+      dbSingleton.db.addData(newAppt);
+      return getAppointment(aptId);
    }
    
    private Document parseXmlFromString(String xmlString) throws Exception {
@@ -149,7 +208,7 @@ public class LAMSAppointmentService {
       Document aptDoc = parseXmlFromString(xmlAppointments);
       aptDoc.getDocumentElement().normalize();
       
-      NodeList nodeList = aptDoc.getElementsByTagName("AppointmentList");
+      NodeList nodeList = aptDoc.getElementsByTagName("appointment");
       
       int highestId = -1;
       
@@ -160,7 +219,136 @@ public class LAMSAppointmentService {
          highestId = aptId > highestId ? aptId : highestId;
       }
       
-      return String.valueOf(highestId++);
+      return String.valueOf(++highestId);
+   }
+   
+   private Element addAptAttr(Appointment appointment, Element aptElement, Document doc) {
+      DateFormat dateToStrFormatter = new SimpleDateFormat("yyyy-mm-dd");
+      String strDate = dateToStrFormatter.format(appointment.getApptdate());
+      
+      DateFormat timeToStrFormatter = new SimpleDateFormat("hh:mm:ss");
+      String strTime = timeToStrFormatter.format(appointment.getAppttime());
+      
+      Attr dateAttr = doc.createAttribute("date");
+	   dateAttr.setValue(strDate);
+	   aptElement.setAttributeNode(dateAttr);
+      
+      Attr idAttr = doc.createAttribute("id");
+	   idAttr.setValue(appointment.getId());
+	   aptElement.setAttributeNode(idAttr);
+      
+      Attr timeAttr = doc.createAttribute("time");
+	   timeAttr.setValue(strTime);
+	   aptElement.setAttributeNode(timeAttr);
+      
+      return aptElement;
+   }
+   
+   private Element addPatientsToApt(Appointment appointment, Element aptElement, Document doc) {
+      Element patientElement = doc.createElement("patient");
+      
+      Patient patient = appointment.getPatientid();
+      
+      DateFormat dateToStrFormatter = new SimpleDateFormat("yyyy-mm-dd");
+      String patientDob = dateToStrFormatter.format(patient.getDateofbirth());
+      
+      Attr idAttr = doc.createAttribute("id");
+	   idAttr.setValue(patient.getId());
+	   patientElement.setAttributeNode(idAttr);
+      
+      Element patientNameElement = doc.createElement("name");
+      patientNameElement.appendChild(doc.createTextNode(patient.getName()));
+		patientElement.appendChild(patientNameElement);
+
+      Element patientAddrElement = doc.createElement("address");
+      patientAddrElement.appendChild(doc.createTextNode(patient.getAddress()));
+		patientElement.appendChild(patientAddrElement);
+
+      Element patientInsrElement = doc.createElement("insurance");
+      patientInsrElement.appendChild(doc.createTextNode(String.valueOf(patient.getInsurance())));
+		patientElement.appendChild(patientInsrElement);
+
+      Element patientDobElement = doc.createElement("dob");
+      patientDobElement.appendChild(doc.createTextNode(patientDob));
+		patientElement.appendChild(patientDobElement);
+      
+      aptElement.appendChild(patientElement);
+      
+      return aptElement;
+   }
+   
+   private Element addPhlebotomistToApt(Appointment appointment, Element aptElement, Document doc) {
+      Element phlebElement = doc.createElement("phlebotomist");
+      
+      Phlebotomist phlebotomist = appointment.getPhlebid();
+      
+      Attr idAttr = doc.createAttribute("id");
+	   idAttr.setValue(phlebotomist.getId());
+	   phlebElement.setAttributeNode(idAttr);
+      
+      Element phlebNameElement = doc.createElement("name");
+      phlebNameElement.appendChild(doc.createTextNode(phlebotomist.getName()));
+		phlebElement.appendChild(phlebNameElement);
+      
+      aptElement.appendChild(phlebElement);
+      
+      return aptElement;
+   }
+   
+   private Element addPSCToApt(Appointment appointment, Element aptElement, Document doc) {
+      Element pscElement = doc.createElement("psc");
+      
+      PSC psc = appointment.getPscid();
+      
+      Attr idAttr = doc.createAttribute("id");
+	   idAttr.setValue(psc.getId());
+	   pscElement.setAttributeNode(idAttr);
+      
+      Element pscNameElement = doc.createElement("name");
+      pscNameElement.appendChild(doc.createTextNode(psc.getName()));
+		pscElement.appendChild(pscNameElement);
+      
+      aptElement.appendChild(pscElement);
+      
+      return aptElement;
+   }
+   
+   private Element addLabTestsToApt(Appointment appointment, Element aptElement, Document doc) {
+      Element allLabTestsElement = doc.createElement("allLabTests");
+      
+      List<AppointmentLabTest> labTests = appointment.getAppointmentLabTestCollection();
+      
+      for (int i = 0; i < labTests.size(); i++) {
+         AppointmentLabTest labTest = labTests.get(i);
+         
+         System.out.println(labTest.getAppointment());
+         
+         Element labTestElement = doc.createElement("appointmentLabTest");
+      
+         if (labTest.getAppointment() != null) {
+            Attr aptIdAttr = doc.createAttribute("appointmentId");
+      	   aptIdAttr.setValue(labTest.getAppointment().getId());
+      	   labTestElement.setAttributeNode(aptIdAttr);
+         }
+         
+         if (labTest.getDiagnosis() != null) {
+            Attr dxcodeAttr = doc.createAttribute("dxcode");
+      	   dxcodeAttr.setValue(labTest.getDiagnosis().getCode());
+      	   labTestElement.setAttributeNode(dxcodeAttr);
+         }
+         
+         if (labTest.getLabTest() != null) {
+            Attr labTestIdAttr = doc.createAttribute("labTestId");
+      	   labTestIdAttr.setValue(labTest.getLabTest().getId());
+      	   labTestElement.setAttributeNode(labTestIdAttr);
+         }
+         
+         allLabTestsElement.appendChild(labTestElement);
+      }
+      
+      aptElement.appendChild(allLabTestsElement);
+      
+      return aptElement;
    }
    
    private Patient getPatient(String patientId) {
