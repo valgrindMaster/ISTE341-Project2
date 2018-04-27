@@ -160,7 +160,7 @@ public class LAMSAppointmentService {
       Element appointment = (Element) node;
       
       String date = appointment.getElementsByTagName("date").item(0).getTextContent();
-      String time = appointment.getElementsByTagName("time").item(0).getTextContent();
+      String time = appointment.getElementsByTagName("time").item(0).getTextContent() + ":00";
       String physicianId = appointment.getElementsByTagName("physicianId").item(0).getTextContent();
       String pscId = appointment.getElementsByTagName("pscId").item(0).getTextContent();
       String patientId = appointment.getElementsByTagName("patientId").item(0).getTextContent();
