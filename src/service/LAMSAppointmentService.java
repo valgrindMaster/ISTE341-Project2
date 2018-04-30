@@ -2,7 +2,6 @@ package service;
 
 import java.util.*;
 import components.data.*;
-import business.*;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.InputStream;
@@ -20,37 +19,56 @@ import javax.xml.transform.stream.StreamResult;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import javax.ws.rs.*;
+import javax.ws.rs.core.*;
 
-import javax.jws.WebService;
-import javax.jws.WebMethod;
-
-@WebService(serviceName = "LAMSAppointmentService")
+@Path("services")
 public class LAMSAppointmentService {
 
-   private DBSingleton dbSingleton;
-   
-   public LAMSAppointmentService() {
-      initialize();
-   }
+   private final String INTRO_MSG = "Welcome to the LAMS Appointment Service";
+   private final String SERVICE_DIR = "services/Appointments/";
 
-   @WebMethod(operationName = "initialize")
-   public String initialize() {
+   @Context
+   private UriInfo context;
+
+   private DBSingleton dbSingleton;
+
+   @GET
+   @Produces("application/xml")
+   public String initialize() throws Exception {
       dbSingleton = DBSingleton.getInstance();
       dbSingleton.db.initialLoad("LAMS");
-      return "Database Initialized";
+      
+      DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
+		DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
+      TransformerFactory tf = TransformerFactory.newInstance();
+      Transformer transformer = tf.newTransformer();
+      StringWriter writer = new StringWriter();
+
+	   Document doc = docBuilder.newDocument();
+      Element rootElement = doc.createElement("AppointmentList");
+      doc.appendChild(rootElement);
+      
+      Element introElement = doc.createElement("intro");
+      introElement.appendChild(doc.createTextNode(INTRO_MSG));
+		rootElement.appendChild(introElement);
+      
+      Element wadlElement = doc.createElement("wadl");
+      wadlElement.appendChild(doc.createTextNode(this.context.getBaseUri().toString() + "application.wadl"));
+		rootElement.appendChild(wadlElement);
+      
+      transformer.transform(new DOMSource(doc), new StreamResult(writer));
+      return writer.toString();
    }
    
-   @WebMethod(operationName = "getAllAppointments")
+   @Path("Appointments")
+   @GET
+   @Produces("application/xml")
    public String getAllAppointments() throws Exception {
       List<Object> objs;
       
       dbSingleton = DBSingleton.getInstance();
       objs = dbSingleton.db.getData("Appointment", "");
-      
-      if (objs == null || objs.isEmpty()) {
-         initialize();
-         objs = dbSingleton.db.getData("Appointment", "");
-      }
       
       String result = "";
       if (objs!= null) {
@@ -67,21 +85,22 @@ public class LAMSAppointmentService {
          for (Object obj : objs) {
             Appointment appointment = (Appointment) obj;
             Element aptElement = doc.createElement("appointment");
+            aptElement = addUriTag(aptElement, doc, this.context.getBaseUri().toString() + SERVICE_DIR, appointment.getId());
             
             //Add attributes to appointment tag.
             aptElement = addAptAttr(appointment, aptElement, doc);
             
             //Add patient data.
-            aptElement = addPatientsToApt(appointment, aptElement, doc);
+            aptElement = addPatientToApt(appointment, aptElement, doc, this.context.getBaseUri().toString() + SERVICE_DIR);
             
             //Add phlebotomist data.
-            aptElement = addPhlebotomistToApt(appointment, aptElement, doc);
+            aptElement = addPhlebotomistToApt(appointment, aptElement, doc, this.context.getBaseUri().toString() + SERVICE_DIR);
             
             //Add PSC data.
-            aptElement = addPSCToApt(appointment, aptElement, doc);
+            aptElement = addPSCToApt(appointment, aptElement, doc, this.context.getBaseUri().toString() + SERVICE_DIR);
             
             //Add Lab Test data.
-            aptElement = addLabTestsToApt(appointment, aptElement, doc);
+            aptElement = addLabTestsToApt(appointment, aptElement, doc, this.context.getBaseUri().toString() + SERVICE_DIR);
             
             rootElement.appendChild(aptElement);
          }
@@ -93,18 +112,15 @@ public class LAMSAppointmentService {
       return result;
    }
    
-   @WebMethod(operationName = "getAppointment")
-   public String getAppointment(String appointmentNumber) throws Exception {
+   @Path("Appointments/{appointmentNumber}")
+   @GET
+   @Produces("application/xml")
+   public String getAppointment(@PathParam("appointmentNumber") String appointmentNumber) throws Exception {
       List<Object> objs;
       String arg = "id='" + appointmentNumber + "'";
       
       dbSingleton = DBSingleton.getInstance();
       objs = dbSingleton.db.getData("Appointment", arg);
-      
-      if (objs == null || objs.isEmpty()) {
-         initialize();
-         objs = dbSingleton.db.getData("Appointment", arg);
-      }
       
       DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
 	   DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
@@ -119,26 +135,27 @@ public class LAMSAppointmentService {
       String result = "";
       if (objs != null && objs.isEmpty()) {
          Element errElement = doc.createElement("error");
-         errElement.appendChild(doc.createTextNode("ERROR: No Appointment found with matching id"));
+         errElement.appendChild(doc.createTextNode("ERROR: Appointment is not available"));
 		   rootElement.appendChild(errElement);
       } else if (objs != null) {
          Appointment appointment = (Appointment) objs.get(0);
          Element aptElement = doc.createElement("appointment");
+         aptElement = addUriTag(aptElement, doc, this.context.getBaseUri().toString() + SERVICE_DIR, appointment.getId());
          
          //Add attributes to appointment tag.
          aptElement = addAptAttr(appointment, aptElement, doc);
          
          //Add patient data.
-         aptElement = addPatientsToApt(appointment, aptElement, doc);
+         aptElement = addPatientToApt(appointment, aptElement, doc, this.context.getBaseUri().toString() + SERVICE_DIR);
          
          //Add phlebotomist data.
-         aptElement = addPhlebotomistToApt(appointment, aptElement, doc);
+         aptElement = addPhlebotomistToApt(appointment, aptElement, doc, this.context.getBaseUri().toString() + SERVICE_DIR);
          
          //Add PSC data.
-         aptElement = addPSCToApt(appointment, aptElement, doc);
+         aptElement = addPSCToApt(appointment, aptElement, doc, this.context.getBaseUri().toString() + SERVICE_DIR);
          
          //Add Lab Test data.
-         aptElement = addLabTestsToApt(appointment, aptElement, doc);
+         aptElement = addLabTestsToApt(appointment, aptElement, doc, this.context.getBaseUri().toString() + SERVICE_DIR);
          
          rootElement.appendChild(aptElement);
       }
@@ -149,7 +166,10 @@ public class LAMSAppointmentService {
       return result;
    }
    
-   @WebMethod(operationName = "addAppointment")
+   @Path("Appointments")
+   @PUT
+   @Consumes({"text/xml","application/xml"})
+   @Produces("application/xml")
    public String addAppointment(String xmlStyle) throws Exception {
       String aptId = createAppointmentId();
       
@@ -165,6 +185,21 @@ public class LAMSAppointmentService {
       String pscId = appointment.getElementsByTagName("pscId").item(0).getTextContent();
       String patientId = appointment.getElementsByTagName("patientId").item(0).getTextContent();
       String phlebotomistId = appointment.getElementsByTagName("phlebotomistId").item(0).getTextContent();
+      
+      //Check physician id.
+      if (!checkPhysicianId(physicianId)) {
+         return generateErrorMsg();
+      }
+      
+      //Check patient id.
+      if (!checkPatientId(patientId)) {
+         generateErrorMsg();
+      }
+      
+      //Check phlebotomist id.
+      if (!checkPhlebotomistId(phlebotomistId)) {
+         generateErrorMsg();
+      }
       
       Patient patient = getPatient(patientId);
       Phlebotomist phlebotomist = getPhlebotomist(phlebotomistId);
@@ -184,6 +219,11 @@ public class LAMSAppointmentService {
          labTests.add(labTest);
       }
       
+      //Check phlebotomist id.
+      if (!checkLabTests(labTests)) {
+         generateErrorMsg();
+      }
+      
       Appointment newAppt = new Appointment(aptId,java.sql.Date.valueOf(date),java.sql.Time.valueOf(time));
       newAppt.setAppointmentLabTestCollection(labTests);
       newAppt.setPatientid(patient);
@@ -191,7 +231,44 @@ public class LAMSAppointmentService {
       newAppt.setPscid(psc);
       
       dbSingleton.db.addData(newAppt);
-      return getAppointment(aptId);
+      
+      DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
+	   DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
+      TransformerFactory tf = TransformerFactory.newInstance();
+      Transformer transformer = tf.newTransformer();
+      StringWriter writer = new StringWriter();
+
+	   Document returnDoc = docBuilder.newDocument();
+      Element rootElement = returnDoc.createElement("AppointmentList");
+      rootElement = addUriTag(rootElement, returnDoc, this.context.getBaseUri().toString() + SERVICE_DIR, aptId);
+      
+      transformer.transform(new DOMSource(returnDoc), new StreamResult(writer));
+      return writer.toString();
+   }
+   
+   private Patient getPatient(String patientId) {
+      List<Object> result = dbSingleton.db.getData("Patient", "id='" + patientId + "'");
+      return result == null || result.isEmpty() ? null : (Patient) result.get(0);
+   }
+   
+   private Physician getPhysician(String physicianId) {
+      List<Object> result = dbSingleton.db.getData("Physician", "id='" + physicianId + "'");
+      return result == null || result.isEmpty() ? null : (Physician) result.get(0);
+   }
+   
+   private Phlebotomist getPhlebotomist(String phlebotomistId) {
+      List<Object> result = dbSingleton.db.getData("Phlebotomist", "id='" + phlebotomistId + "'");
+      return result == null || result.isEmpty() ? null : (Phlebotomist) result.get(0);
+   }
+   
+   private PSC getPSC(String PSCId) {
+      List<Object> result = dbSingleton.db.getData("PSC", "id='" + PSCId + "'");
+      return result == null || result.isEmpty() ? null : (PSC) result.get(0);
+   }
+   
+   private LabTest getLabTest(String labTestId) {
+      List<Object> result = dbSingleton.db.getData("LabTest", "id='" + labTestId + "'");
+      return result == null || result.isEmpty() ? null : (LabTest) result.get(0);
    }
    
    private Document parseXmlFromString(String xmlString) throws Exception {
@@ -219,7 +296,7 @@ public class LAMSAppointmentService {
          highestId = aptId > highestId ? aptId : highestId;
       }
       
-      return String.valueOf(++highestId);
+      return String.valueOf(highestId + 10);
    }
    
    private Element addAptAttr(Appointment appointment, Element aptElement, Document doc) {
@@ -244,8 +321,9 @@ public class LAMSAppointmentService {
       return aptElement;
    }
    
-   private Element addPatientsToApt(Appointment appointment, Element aptElement, Document doc) {
+   private Element addPatientToApt(Appointment appointment, Element aptElement, Document doc, String baseUri) {
       Element patientElement = doc.createElement("patient");
+      patientElement = addUriTag(patientElement, doc, baseUri, null);
       
       Patient patient = appointment.getPatientid();
       
@@ -277,8 +355,9 @@ public class LAMSAppointmentService {
       return aptElement;
    }
    
-   private Element addPhlebotomistToApt(Appointment appointment, Element aptElement, Document doc) {
+   private Element addPhlebotomistToApt(Appointment appointment, Element aptElement, Document doc, String baseUri) {
       Element phlebElement = doc.createElement("phlebotomist");
+      phlebElement = addUriTag(phlebElement, doc, baseUri, null);
       
       Phlebotomist phlebotomist = appointment.getPhlebid();
       
@@ -295,8 +374,9 @@ public class LAMSAppointmentService {
       return aptElement;
    }
    
-   private Element addPSCToApt(Appointment appointment, Element aptElement, Document doc) {
+   private Element addPSCToApt(Appointment appointment, Element aptElement, Document doc, String baseUri) {
       Element pscElement = doc.createElement("psc");
+      pscElement = addUriTag(pscElement, doc, baseUri, null);
       
       PSC psc = appointment.getPscid();
       
@@ -313,7 +393,7 @@ public class LAMSAppointmentService {
       return aptElement;
    }
    
-   private Element addLabTestsToApt(Appointment appointment, Element aptElement, Document doc) {
+   private Element addLabTestsToApt(Appointment appointment, Element aptElement, Document doc, String baseUri) {
       Element allLabTestsElement = doc.createElement("allLabTests");
       
       List<AppointmentLabTest> labTests = appointment.getAppointmentLabTestCollection();
@@ -321,9 +401,8 @@ public class LAMSAppointmentService {
       for (int i = 0; i < labTests.size(); i++) {
          AppointmentLabTest labTest = labTests.get(i);
          
-         System.out.println(labTest.getAppointment());
-         
          Element labTestElement = doc.createElement("appointmentLabTest");
+         labTestElement = addUriTag(labTestElement, doc, baseUri, null);
       
          if (labTest.getAppointment() != null) {
             Attr aptIdAttr = doc.createAttribute("appointmentId");
@@ -351,15 +430,56 @@ public class LAMSAppointmentService {
       return aptElement;
    }
    
-   private Patient getPatient(String patientId) {
-      return (Patient) dbSingleton.db.getData("Patient", "id='" + patientId + "'").get(0);
+   private Element addUriTag(Element elem, Document doc, String baseUri, String uriAppendage) {
+      Element uriElement = doc.createElement("uri");
+      
+      if (uriAppendage != null) {
+         uriElement.appendChild(doc.createTextNode(baseUri + uriAppendage));
+      }
+      
+		elem.appendChild(uriElement);
+      
+      return elem;
    }
    
-   private Phlebotomist getPhlebotomist(String phlebotomistId) {
-      return (Phlebotomist) dbSingleton.db.getData("Phlebotomist", "id='" + phlebotomistId + "'").get(0);
+   private String generateErrorMsg() throws Exception {
+      DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
+	   DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
+      TransformerFactory tf = TransformerFactory.newInstance();
+      Transformer transformer = tf.newTransformer();
+      StringWriter writer = new StringWriter();
+
+	   Document errDoc = docBuilder.newDocument();
+      Element rootElement = errDoc.createElement("AppointmentList");
+      errDoc.appendChild(rootElement);
+      
+      Element errElement = errDoc.createElement("error");
+      errElement.appendChild(errDoc.createTextNode("ERROR: Appointment is not available"));
+	   rootElement.appendChild(errElement);
+      
+      transformer.transform(new DOMSource(errDoc), new StreamResult(writer));
+      return writer.toString();
    }
    
-   private PSC getPSC(String PSCId) {
-      return (PSC) dbSingleton.db.getData("PSC", "id='" + PSCId + "'").get(0);
+   private boolean checkPatientId(String patientId) {
+      return getPatient(patientId) != null;
+   }
+   
+   private boolean checkPhysicianId(String physicianId) {
+      return getPhysician(physicianId) != null;
+   }
+   
+   private boolean checkLabTests(List<AppointmentLabTest> labTests) {
+      for (int i = 0; i < labTests.size(); i++) {
+         if (getLabTest(labTests.get(i).getLabTest().getId()) == null) {
+            return false;
+         }
+      }
+      
+      return true;
+   }
+   
+   private boolean checkPhlebotomistId(String phlebotomistId) {
+      return getPhlebotomist(phlebotomistId) != null;
    }
 }

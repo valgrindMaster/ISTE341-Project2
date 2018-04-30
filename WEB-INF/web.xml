@@ -1,1 +1,10 @@
-<web-app/>
+<web-app>
+   <servlet>
+      <display-name>Cellular Won Laboratory Service</display-name>
+      <servlet-name>rest.ApplicationConfig</servlet-name>
+      <init-param>
+         <param-name>javax.ws.rs.Application</param-name>
+         <param-value>rest.ApplicationConfig</param-value>
+      </init-param>
+   </servlet>
+</web-app>
